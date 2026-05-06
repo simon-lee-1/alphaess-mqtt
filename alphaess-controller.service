@@ -1,0 +1,16 @@
+[Unit]
+Description=AlphaESS Battery Controller (MQTT bridge for Home Assistant)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=simon
+WorkingDirectory=/home/simon/headless-amber/alphaess-controller
+EnvironmentFile=/home/simon/headless-amber/.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
