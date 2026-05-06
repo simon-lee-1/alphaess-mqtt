@@ -6,8 +6,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=simon
-WorkingDirectory=/home/simon/headless-amber/alphaess-controller
-EnvironmentFile=/home/simon/headless-amber/.env
+WorkingDirectory=/home/simon/alphaess-controller
+EnvironmentFile=/home/simon/alphaess-controller/.env
 ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=10
