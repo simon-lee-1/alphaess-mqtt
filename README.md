@@ -2,6 +2,10 @@
 
 Lightweight service that connects to the AlphaESS Open API and exposes battery charge control via MQTT with Home Assistant auto-discovery.
 
+## Why
+
+The official AlphaESS Home Assistant integration can read sensor data but cannot reliably control charge/discharge scheduling. It exposes time window entities that are effectively read-only — you can't set them from an automation. This service fills that gap: it provides full charge control via MQTT commands, so you can automate grid charging during off-peak/free electricity windows and ensure it stops on time.
+
 ## Features
 
 - **Battery mode control** — charge from grid, self-consumption (auto), or preserve SOC
