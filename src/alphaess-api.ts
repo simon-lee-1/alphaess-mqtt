@@ -15,6 +15,19 @@ export interface AlphaESSConfig {
   serialNumber: string;
 }
 
+export interface EnergyData {
+  /** Daily PV generation (kWh) */
+  pvGeneration: number;
+  /** Daily grid import (kWh) */
+  gridImport: number;
+  /** Daily grid export / feed-in (kWh) */
+  gridExport: number;
+  /** Daily battery charge (kWh) */
+  batteryCharge: number;
+  /** Daily battery discharge (kWh) */
+  batteryDischarge: number;
+}
+
 export interface PowerData {
   /** Battery state of charge (0-100) */
   soc: number;
@@ -87,7 +100,7 @@ export class AlphaESSApi {
     const url = `${API_BASE}${path}`;
     const headers = this.getHeaders();
 
-    const options: RequestInit = { method, headers };
+    const options: RequestInit = { method, headers, signal: AbortSignal.timeout(30_000) };
     if (body) {
       options.body = JSON.stringify(body);
     }
@@ -111,6 +124,22 @@ export class AlphaESSApi {
 
   async getSystemList(): Promise<SystemInfo[]> {
     return this.request<SystemInfo[]>('GET', '/getEssList');
+  }
+
+  async getDailyEnergy(date?: string): Promise<EnergyData> {
+    const queryDate = date ?? new Date().toISOString().split('T')[0];
+    const data = await this.request<any>(
+      'GET',
+      `/getOneDateEnergyBySn?sysSn=${this.config.serialNumber}&queryDate=${queryDate}`,
+    );
+
+    return {
+      pvGeneration: data.epv ?? 0,
+      gridImport: data.eInput ?? 0,
+      gridExport: data.eOutput ?? 0,
+      batteryCharge: data.eCharge ?? 0,
+      batteryDischarge: data.eDischarge ?? 0,
+    };
   }
 
   async getPowerData(): Promise<PowerData> {
@@ -235,18 +264,20 @@ export class AlphaESSApi {
   }
 
   /**
-   * Return to self-consumption mode (no forced charge/discharge).
+   * Return to self-consumption mode.
+   * Clears both gridCharge and ctrDis flags so battery operates normally:
+   * charges from PV, discharges freely to serve household load.
    */
   async selfConsumption(): Promise<void> {
-    await this.setChargeConfig({
-      gridCharge: false,
-      timeChaf1: '00:00',
-      timeChae1: '00:00',
-    });
     await this.setDischargeConfig({
       ctrDis: false,
       timeDisf1: '00:00',
       timeDise1: '00:00',
+    });
+    await this.setChargeConfig({
+      gridCharge: false,
+      timeChaf1: '00:00',
+      timeChae1: '00:00',
     });
   }
 

@@ -6,7 +6,7 @@
  */
 
 import * as mqtt from 'mqtt';
-import { AlphaESSApi, PowerData, ChargeConfig, DischargeConfig } from './alphaess-api';
+import { AlphaESSApi, PowerData, EnergyData, ChargeConfig, DischargeConfig } from './alphaess-api';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -36,6 +36,13 @@ const DEVICE_INFO = {
 
 type BatteryMode = 'Charge' | 'Discharge' | 'Auto';
 
+interface ScheduleEntry {
+  hour: number;
+  minute: number;
+  action: () => Promise<void>;
+  label: string;
+}
+
 // ---------------------------------------------------------------------------
 // MqttBridge
 // ---------------------------------------------------------------------------
@@ -43,8 +50,23 @@ type BatteryMode = 'Charge' | 'Discharge' | 'Auto';
 export class MqttBridge {
   private client: mqtt.MqttClient | null = null;
   private stateTimer: ReturnType<typeof setInterval> | null = null;
+  private scheduleTimer: ReturnType<typeof setInterval> | null = null;
   private lastError: string = '';
   private currentMode: BatteryMode = 'Auto';
+  private lastScheduleRun: string = ''; // "HH:MM" of last executed schedule entry
+
+  private readonly schedule: ScheduleEntry[] = [
+    {
+      hour: 11, minute: 0,
+      action: () => this.api.forceCharge(180, 100),
+      label: 'Start charge (11:00)',
+    },
+    {
+      hour: 14, minute: 0,
+      action: () => this.api.selfConsumption(),
+      label: 'Stop charge (14:00)',
+    },
+  ];
 
   constructor(
     private readonly api: AlphaESSApi,
@@ -83,6 +105,7 @@ export class MqttBridge {
       this.publishDiscovery();
       this.subscribeCommandTopics();
       this.startStatePolling();
+      this.startScheduler();
     });
 
     this.client.on('reconnect', () => {
@@ -102,6 +125,10 @@ export class MqttBridge {
     if (this.stateTimer) {
       clearInterval(this.stateTimer);
       this.stateTimer = null;
+    }
+    if (this.scheduleTimer) {
+      clearInterval(this.scheduleTimer);
+      this.scheduleTimer = null;
     }
     if (this.client) {
       this.publishAvailability('offline');
@@ -272,6 +299,67 @@ export class MqttBridge {
       icon: 'mdi:battery-minus',
     });
 
+    // Energy sensors (kWh, total_increasing) — for HA Energy Dashboard
+    this.publishDiscoveryConfig('sensor', 'alphaess_battery_daily_pv', {
+      name: 'Daily PV Generation',
+      unique_id: 'alphaess_battery_daily_pv',
+      state_topic: `${TOPIC_PREFIX}/daily_pv/state`,
+      unit_of_measurement: 'kWh',
+      device_class: 'energy',
+      state_class: 'total_increasing',
+      device: DEVICE_INFO,
+      availability,
+      icon: 'mdi:solar-power-variant',
+    });
+
+    this.publishDiscoveryConfig('sensor', 'alphaess_battery_daily_grid_import', {
+      name: 'Daily Grid Import',
+      unique_id: 'alphaess_battery_daily_grid_import',
+      state_topic: `${TOPIC_PREFIX}/daily_grid_import/state`,
+      unit_of_measurement: 'kWh',
+      device_class: 'energy',
+      state_class: 'total_increasing',
+      device: DEVICE_INFO,
+      availability,
+      icon: 'mdi:transmission-tower-import',
+    });
+
+    this.publishDiscoveryConfig('sensor', 'alphaess_battery_daily_grid_export', {
+      name: 'Daily Grid Export',
+      unique_id: 'alphaess_battery_daily_grid_export',
+      state_topic: `${TOPIC_PREFIX}/daily_grid_export/state`,
+      unit_of_measurement: 'kWh',
+      device_class: 'energy',
+      state_class: 'total_increasing',
+      device: DEVICE_INFO,
+      availability,
+      icon: 'mdi:transmission-tower-export',
+    });
+
+    this.publishDiscoveryConfig('sensor', 'alphaess_battery_daily_charge', {
+      name: 'Daily Battery Charge',
+      unique_id: 'alphaess_battery_daily_charge',
+      state_topic: `${TOPIC_PREFIX}/daily_charge/state`,
+      unit_of_measurement: 'kWh',
+      device_class: 'energy',
+      state_class: 'total_increasing',
+      device: DEVICE_INFO,
+      availability,
+      icon: 'mdi:battery-charging',
+    });
+
+    this.publishDiscoveryConfig('sensor', 'alphaess_battery_daily_discharge', {
+      name: 'Daily Battery Discharge',
+      unique_id: 'alphaess_battery_daily_discharge',
+      state_topic: `${TOPIC_PREFIX}/daily_discharge/state`,
+      unit_of_measurement: 'kWh',
+      device_class: 'energy',
+      state_class: 'total_increasing',
+      device: DEVICE_INFO,
+      availability,
+      icon: 'mdi:battery-arrow-down',
+    });
+
     console.log('[MQTT] Discovery configs published');
   }
 
@@ -398,6 +486,19 @@ export class MqttBridge {
       console.warn('[MQTT] Failed to get power data:', msg);
       this.setLastError(msg);
     }
+
+    // Energy data (daily kWh) — less frequent, OK to poll every cycle
+    try {
+      const energy = await this.api.getDailyEnergy();
+      this.publish(`${TOPIC_PREFIX}/daily_pv/state`, String(energy.pvGeneration));
+      this.publish(`${TOPIC_PREFIX}/daily_grid_import/state`, String(energy.gridImport));
+      this.publish(`${TOPIC_PREFIX}/daily_grid_export/state`, String(energy.gridExport));
+      this.publish(`${TOPIC_PREFIX}/daily_charge/state`, String(energy.batteryCharge));
+      this.publish(`${TOPIC_PREFIX}/daily_discharge/state`, String(energy.batteryDischarge));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('[MQTT] Failed to get energy data:', msg);
+    }
   }
 
   private async publishConfigState(): Promise<void> {
@@ -424,6 +525,49 @@ export class MqttBridge {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn('[MQTT] Failed to get config:', msg);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Scheduler
+  // -------------------------------------------------------------------------
+
+  private startScheduler(): void {
+    if (this.scheduleTimer) clearInterval(this.scheduleTimer);
+    this.scheduleTimer = setInterval(() => this.checkSchedule(), 30_000);
+    // Run immediately too
+    this.checkSchedule();
+    console.log('[MQTT] Scheduler started — entries:', this.schedule.map(s => s.label).join(', '));
+  }
+
+  private async checkSchedule(): Promise<void> {
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    for (const entry of this.schedule) {
+      const entryTime = `${String(entry.hour).padStart(2, '0')}:${String(entry.minute).padStart(2, '0')}`;
+      if (hhmm === entryTime && this.lastScheduleRun !== entryTime) {
+        this.lastScheduleRun = entryTime;
+        console.log(`[SCHEDULER] Triggering: ${entry.label}`);
+        try {
+          await entry.action();
+          console.log(`[SCHEDULER] ${entry.label} — success`);
+          // Update mode state
+          if (entry.label.includes('Start charge')) {
+            this.currentMode = 'Charge';
+          } else {
+            this.currentMode = 'Auto';
+          }
+          this.publish(`${TOPIC_PREFIX}/mode/state`, this.currentMode);
+          this.setLastError('');
+          // Refresh config after change
+          setTimeout(() => this.publishConfigState(), 5_000);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[SCHEDULER] ${entry.label} — FAILED:`, msg);
+          this.setLastError(`Scheduler: ${entry.label} failed — ${msg}`);
+        }
+      }
     }
   }
 
