@@ -244,6 +244,32 @@ export class MqttBridge {
       icon: 'mdi:solar-power',
     });
 
+    // Sensor: PV string 1 (AlphaESS panels only)
+    this.publishDiscoveryConfig('sensor', 'alphaess_battery_pv1_power', {
+      name: 'PV1 Power (AlphaESS)',
+      unique_id: 'alphaess_battery_pv1_power',
+      state_topic: `${TOPIC_PREFIX}/pv1_power/state`,
+      unit_of_measurement: 'W',
+      device_class: 'power',
+      state_class: 'measurement',
+      device: DEVICE_INFO,
+      availability,
+      icon: 'mdi:solar-panel',
+    });
+
+    // Sensor: PV meter DC (Solis via CT clamp)
+    this.publishDiscoveryConfig('sensor', 'alphaess_battery_pv_meter_dc', {
+      name: 'PV Meter DC (Solis CT)',
+      unique_id: 'alphaess_battery_pv_meter_dc',
+      state_topic: `${TOPIC_PREFIX}/pv_meter_dc/state`,
+      unit_of_measurement: 'W',
+      device_class: 'power',
+      state_class: 'measurement',
+      device: DEVICE_INFO,
+      availability,
+      icon: 'mdi:solar-power-variant',
+    });
+
     // Sensor: load power
     this.publishDiscoveryConfig('sensor', 'alphaess_battery_load_power', {
       name: 'Load Power',
@@ -477,6 +503,8 @@ export class MqttBridge {
       this.publish(`${TOPIC_PREFIX}/battery_power/state`, String(Math.round(power.batteryPower)));
       this.publish(`${TOPIC_PREFIX}/grid_power/state`, String(Math.round(power.gridPower)));
       this.publish(`${TOPIC_PREFIX}/pv_power/state`, String(Math.round(power.pvPower)));
+      this.publish(`${TOPIC_PREFIX}/pv1_power/state`, String(Math.round(power.pvPower1)));
+      this.publish(`${TOPIC_PREFIX}/pv_meter_dc/state`, String(Math.round(power.pvMeterDc)));
       this.publish(`${TOPIC_PREFIX}/load_power/state`, String(Math.round(power.loadPower)));
 
       // Derive mode from config state

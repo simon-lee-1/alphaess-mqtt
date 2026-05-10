@@ -37,6 +37,10 @@ export interface PowerData {
   gridPower: number;
   /** PV generation in watts */
   pvPower: number;
+  /** PV string 1 (AlphaESS DC panels) in watts */
+  pvPower1: number;
+  /** PV meter DC (CT clamp, measures Solis AC-coupled) in watts */
+  pvMeterDc: number;
   /** Load consumption in watts */
   loadPower: number;
 }
@@ -153,6 +157,8 @@ export class AlphaESSApi {
       batteryPower: data.pbat ?? 0,
       gridPower: data.pgrid ?? 0,
       pvPower: data.ppv ?? 0,
+      pvPower1: data.ppvDetail?.ppv1 ?? 0,
+      pvMeterDc: data.ppvDetail?.pmeterDc ?? 0,
       loadPower: data.pload ?? 0,
     };
   }
