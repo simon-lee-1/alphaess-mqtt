@@ -4,11 +4,11 @@ Lightweight service that connects to the AlphaESS Open API and exposes battery m
 
 ## Important Limitation
 
-**The AlphaESS Open API cannot reliably force grid charging or discharging.** The `updateChargeConfigInfo` endpoint only sets a *permission window* — it tells the inverter "you may charge from grid during this time" but does NOT command it to actually do so. The inverter may or may not charge depending on its internal state.
+**The AlphaESS Open API cannot reliably force grid charging or discharging.** The `updateChargeConfigInfo` endpoint only sets a *permission window* — it tells the inverter "you may charge from grid during this time" but does NOT command it to actually do so. The inverter will not start charging from grid based on this flag alone.
 
-When you press "Force Charge" in the AlphaESS/GloBird app, the command goes through a proprietary TCP channel (cloud → WiFi dongle → Modbus RS485 → inverter dispatch registers). This dispatch mechanism is not exposed via the Open API.
+Actual grid charge dispatch is triggered by the VPP (Virtual Power Plant) operator through a proprietary TCP channel (cloud → WiFi dongle → Modbus RS485 → inverter dispatch registers). Neither the AlphaESS app nor the Open API can trigger this — only the VPP dispatch system writes to the Modbus dispatch registers that command the inverter to charge.
 
-**To reliably control charge/discharge**, you need direct Modbus access to the inverter's dispatch registers (0x0880-0x0888) via either:
+**To reliably control charge/discharge yourself**, you need direct Modbus access to the inverter's dispatch registers (0x0880-0x0888) via either:
 - USB-to-RS485 adapter connected to the inverter's CAN/RS485 RJ45 port
 - Modbus TCP on port 502 (if Ethernet port is accessible)
 
@@ -17,7 +17,7 @@ See [Alpha2MQTT](https://github.com/dxoverdy/Alpha2MQTT) for a proven Modbus imp
 **What this service CAN do reliably:**
 - Monitor real-time power data (SOC, battery/grid/PV/load watts)
 - Monitor daily energy totals
-- Set charge/discharge permission windows (may or may not be honoured by inverter)
+- Set charge/discharge permission windows (not sufficient to trigger charging on their own)
 - Stop a charge that's already running (setting `gridCharge=false` does reliably stop it)
 
 ## Features
@@ -100,7 +100,7 @@ Time windows are rounded to 15-minute intervals (API requirement).
 | gridCharge | ctrDis | Result |
 |---|---|---|
 | `false` | `false` | **Auto** — self-consumption, battery charges from PV and discharges to serve load |
-| `true` | `false` | **Charge window open** — inverter is *permitted* to charge from grid (not guaranteed) |
+| `true` | `false` | **Charge window open** — inverter is *permitted* to charge from grid (requires VPP dispatch or Modbus to actually start) |
 | `false` | `true` | **Preserve** — battery holds SOC, won't discharge to serve load (grid covers all demand) |
 | `true` | `true` | Charge window open + Preserve |
 
@@ -111,7 +111,7 @@ The service includes a daily scheduler that runs independently of HA automations
 - **11:00** — `forceCharge(180, 100)` — opens grid charge permission window
 - **14:00** — `selfConsumption()` — explicitly closes the window (`gridCharge=false`)
 
-Closing the window at 14:00 **does** reliably stop an active charge. Opening the window at 11:00 does NOT reliably start one — the inverter may ignore it.
+Closing the window at 14:00 **does** reliably stop an active charge. Opening the window at 11:00 does NOT start charging — it only permits it. Actual charging is dispatched by the VPP operator or requires direct Modbus commands.
 
 The scheduler checks every 30 seconds and uses a dedup guard to prevent re-execution within the same minute.
 
