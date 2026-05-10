@@ -386,6 +386,18 @@ export class MqttBridge {
       icon: 'mdi:battery-arrow-down',
     });
 
+    this.publishDiscoveryConfig('sensor', 'alphaess_battery_daily_grid_charge', {
+      name: 'Daily Grid Charge',
+      unique_id: 'alphaess_battery_daily_grid_charge',
+      state_topic: `${TOPIC_PREFIX}/daily_grid_charge/state`,
+      unit_of_measurement: 'kWh',
+      device_class: 'energy',
+      state_class: 'total_increasing',
+      device: DEVICE_INFO,
+      availability,
+      icon: 'mdi:transmission-tower-import',
+    });
+
     console.log('[MQTT] Discovery configs published');
   }
 
@@ -523,6 +535,7 @@ export class MqttBridge {
       this.publish(`${TOPIC_PREFIX}/daily_grid_export/state`, String(energy.gridExport));
       this.publish(`${TOPIC_PREFIX}/daily_charge/state`, String(energy.batteryCharge));
       this.publish(`${TOPIC_PREFIX}/daily_discharge/state`, String(energy.batteryDischarge));
+      this.publish(`${TOPIC_PREFIX}/daily_grid_charge/state`, String(energy.gridCharge));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn('[MQTT] Failed to get energy data:', msg);

@@ -127,6 +127,45 @@ The actual "force charge now" command writes to Modbus dispatch registers on the
 
 Slave address: 0x55, baud: 9600. See Alpha2MQTT for the register map.
 
+## Exposed Sensors
+
+### Real-time Power (from `getLastPowerData`, every 30s)
+
+| Sensor | Entity ID | Unit | Description |
+|--------|-----------|------|-------------|
+| PV Power | `sensor.alphaess_battery_pv_power` | W | Total solar (all strings + CT) |
+| PV1 Power | `sensor.alphaess_battery_pv1_power` | W | DC string 1 (AlphaESS panels) |
+| PV Meter DC | `sensor.alphaess_battery_pv_meter_dc` | W | CT clamp (AC-coupled inverters e.g. Solis) |
+| Battery Power | `sensor.alphaess_battery_battery_power` | W | +ve=charging, -ve=discharging |
+| Grid Power | `sensor.alphaess_battery_grid_power` | W | +ve=importing, -ve=exporting |
+| Load Power | `sensor.alphaess_battery_load_power` | W | Household consumption |
+| SOC | `sensor.alphaess_battery_state_of_charge` | % | Battery state of charge |
+
+### Daily Energy (from `getOneDateEnergyBySn`, every poll)
+
+| Sensor | Entity ID | Unit | Description |
+|--------|-----------|------|-------------|
+| Daily PV | `sensor.alphaess_battery_daily_pv_generation` | kWh | Total solar generation today |
+| Daily Grid Import | `sensor.alphaess_battery_daily_grid_import` | kWh | Energy imported from grid |
+| Daily Grid Export | `sensor.alphaess_battery_daily_grid_export` | kWh | Energy exported to grid |
+| Daily Battery Charge | `sensor.alphaess_battery_daily_battery_charge` | kWh | Total energy into battery |
+| Daily Battery Discharge | `sensor.alphaess_battery_daily_battery_discharge` | kWh | Total energy from battery |
+| Daily Grid Charge | `sensor.alphaess_battery_daily_grid_charge` | kWh | Grid-to-battery energy |
+
+### Available but not exposed (add if needed)
+
+From `getLastPowerData.ppvDetail`:
+- `ppv2`, `ppv3`, `ppv4` — additional DC strings (0 if unused)
+
+From `getLastPowerData`:
+- `pev` — EV charger power (W)
+- `pevDetail.ev1-4Power` — per-charger breakdown
+- `prealL1/L2/L3` — real power per phase (W)
+- `pgridDetail.pmeterL1/L2/L3` — grid meter per phase (W)
+
+From `getOneDateEnergyBySn`:
+- `eChargingPile` — EV charging energy (kWh)
+
 ## Requirements
 
 - Node.js 18+

@@ -26,6 +26,8 @@ export interface EnergyData {
   batteryCharge: number;
   /** Daily battery discharge (kWh) */
   batteryDischarge: number;
+  /** Daily grid-to-battery charge (kWh) */
+  gridCharge: number;
 }
 
 export interface PowerData {
@@ -143,6 +145,7 @@ export class AlphaESSApi {
       gridExport: data.eOutput ?? 0,
       batteryCharge: data.eCharge ?? 0,
       batteryDischarge: data.eDischarge ?? 0,
+      gridCharge: data.eGridCharge ?? 0,
     };
   }
 
